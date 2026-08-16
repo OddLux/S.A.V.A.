@@ -12,7 +12,16 @@ a = Analysis(
     # dp-227: VERSION is bundled at the bundle ROOT ('.') -- core/version.py
     # reads it from sys._MEIPASS in a frozen build, and without it the About
     # dialog falls back to its "0.0.0-unknown" sentinel.
-    datas=[('assets', 'assets'), ('config', 'config'), ('VERSION', '.')],
+    #
+    # dp-257: 'config' was previously bundled as data too. Nothing at
+    # runtime ever reads it -- config/settings.py resolves to %APPDATA%
+    # when frozen and falls back to its own in-source DEFAULT_SETTINGS dict;
+    # core/artnet_config.py does the same with an in-source DEFAULT_INI
+    # string. So the entry was dead weight AND a real privacy leak: whatever
+    # happened to sit in the dev's config/ folder at build time -- including
+    # sava_settings.json, which is gitignored but still a local file --
+    # would get copied verbatim into the shipped exe. Removed.
+    datas=[('assets', 'assets'), ('VERSION', '.')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
