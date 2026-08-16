@@ -1,0 +1,13 @@
+venv/
+dist/
+build/
+installer_output/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.idea/
+*.egg-info/
+*.zip
+logs/
+config/sava_settings.json
