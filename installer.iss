@@ -46,11 +46,6 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 ; path, see CLAUDE.md. Same class of V1-leftover as the paths this file used
 ; to carry.)
 Source: "dist\SAVA\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; grandMA3 plugin, shipped alongside the app so an installed copy has it on
-; disk. Not loaded by SAVA -- the user copies it into the console's
-; gma3_library\datapools\plugins folder. See ma3_plugin\README.md.
-Source: "ma3_plugin\SAVA_patch.xml"; DestDir: "{app}\ma3_plugin"; Flags: ignoreversion
-Source: "ma3_plugin\README.md";      DestDir: "{app}\ma3_plugin"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\SAVA"; Filename: "{app}\SAVA.exe"

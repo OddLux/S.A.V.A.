@@ -20,7 +20,6 @@ Grab the files from the [**latest release**](../../releases/latest):
 |---|---|
 | `SAVA_Setup_<version>.exe` | Installer — Start Menu entry, uninstall via Windows Apps. |
 | `SAVA_<version>_portable.zip` | Unzip and run. No install, no admin rights. |
-| `MA3_SAVA_Patch_Plugin.zip` | Optional **grandMA3 plugin** that patches a show for SAVA in one shot — the plugin plus its install README. See [`ma3_plugin/README.md`](ma3_plugin/README.md). |
 
 Both builds are unsigned, so Windows SmartScreen may warn about an unknown
 publisher — choose **More info → Run anyway**.
@@ -39,8 +38,6 @@ publisher — choose **More info → Run anyway**.
 - Playlist with shuffle and repeat (none / one / all); **M3U** and **PLS**
   import/export; **`.savashow`** export/import that carries cues and markers.
 - Selectable **color themes** and audio **output-device** selection.
-- **grandMA3 plugin** (`ma3_plugin/`) that patches a console show for SAVA:
-  18 single-channel dimmers, one per function, each with its own Group.
 
 ## Supported audio formats
 
