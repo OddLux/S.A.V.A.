@@ -79,7 +79,7 @@ for the full dependency license breakdown and the FFmpeg source offer.
 ## Support
 
 SAVA is free. If it's useful to you and you'd like to support development,
-donations are welcome — see the repository's sponsor/donation link.
+too bad.
 
 ---
 
