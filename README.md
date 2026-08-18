@@ -76,11 +76,6 @@ redistribute SAVA freely, but any distributed derivative must also be
 GPL-3.0 and ship its source. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)
 for the full dependency license breakdown and the FFmpeg source offer.
 
-## Support
-
-SAVA is free. If it's useful to you and you'd like to support development,
-too bad.
-
 ---
 
 Developed by Massimo — Sava Kisiov, for OddLux.
