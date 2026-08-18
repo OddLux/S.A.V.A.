@@ -82,6 +82,8 @@ prefixed `[SAVA]`.
 | `SAVA_patch.xml` | The importable plugin. This is the file you copy to the console. |
 | `SAVA_patch.lua` | Plugin source. Single source of truth -- edit this. |
 | `build_xml.py` | Regenerates the `.xml` from the `.lua`. |
+| `build_archive.py` | Builds `dist/MA3_SAVA_Patch_Plugin.zip`, the release download. |
+| `archive/README.md` | The README shipped inside that archive. |
 | `DEVELOPING.md` | XML format details, rebuild instructions, API caveats. |
 
 ## Status

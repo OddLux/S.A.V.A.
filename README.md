@@ -20,7 +20,7 @@ Grab the files from the [**latest release**](../../releases/latest):
 |---|---|
 | `SAVA_Setup_<version>.exe` | Installer — Start Menu entry, uninstall via Windows Apps. |
 | `SAVA_<version>_portable.zip` | Unzip and run. No install, no admin rights. |
-| `SAVA_patch.xml` | Optional **grandMA3 plugin** that patches a show for SAVA in one shot — see [`ma3_plugin/README.md`](ma3_plugin/README.md). |
+| `MA3_SAVA_Patch_Plugin.zip` | Optional **grandMA3 plugin** that patches a show for SAVA in one shot — the plugin plus its install README. See [`ma3_plugin/README.md`](ma3_plugin/README.md). |
 
 Both builds are unsigned, so Windows SmartScreen may warn about an unknown
 publisher — choose **More info → Run anyway**.
