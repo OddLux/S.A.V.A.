@@ -22,6 +22,35 @@ account.
 
 ---
 
+## [3.1.0]
+
+### Added
+
+- **LAN web remote.** A new **Remote** menu with two independently
+  toggleable browser pages for phones and laptops on the same network:
+  **Web Viewer** (read-only: title, timecode, waveform with a moving
+  playhead, playlist) and **Web Control** (adds play / pause / stop / next /
+  prev, master volume, click-to-seek and click-a-row-to-play). Works with no
+  internet connection. There is no password - anyone on the network can use
+  an enabled page, so only enable it on networks you trust. Default port
+  8765, changeable in Remote -> Web Remote Info. (dp-267)
+- **Level playlist.** The "Level" button (also Playback -> Level Playlist
+  Volumes...) measures every track's loudness and lowers per-track volumes
+  so the playlist plays at a roughly even level. It only turns tracks down,
+  never up; tracks far quieter than the rest (spoken intros, ambience) are
+  left untouched. It overwrites existing per-track volumes, after
+  confirmation. (dp-266)
+
+### Changed
+
+- **Volume faders now use a perceptual dB taper** instead of a linear gain -
+  master, per-track and the ArtNet master channel. The bottom of the fader
+  is usable and equal fader travel sounds like an equal change. Saved
+  per-track volumes are not converted, so tracks you trimmed earlier will
+  play quieter than before - re-trim them. (dp-265)
+
+---
+
 ## [3.0.1]
 
 ### Changed

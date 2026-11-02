@@ -42,6 +42,13 @@ def _isolate_settings():
     original_data = copy.deepcopy(settings._data)
 
     settings._path = tmp_dir / "sava_settings.json"
+    # dp-267: only the WRITE path is redirected above - values are still
+    # loaded from the developer's real file at import. A real config with the
+    # web remote enabled made every MainWindow test try to bind its port; with
+    # a running SAVA holding that port, the bind-failure QMessageBox blocked
+    # the suite forever. Web tests start their own servers explicitly.
+    settings._data["web_viewer_enabled"] = False
+    settings._data["web_control_enabled"] = False
     try:
         yield
     finally:

@@ -5,7 +5,8 @@ context menu, drag-and-drop reordering, per-track volume.
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QLabel, QSlider, QMenu, QColorDialog, QAbstractItemView
+    QLabel, QSlider, QMenu, QColorDialog, QAbstractItemView,
+    QPushButton,
 )
 from PyQt6.QtCore    import Qt, pyqtSignal, QPoint
 from PyQt6.QtGui     import QColor, QBrush
@@ -34,6 +35,7 @@ class PlaylistWidget(QWidget):
     track_activated         = pyqtSignal(int)
     track_volume_changed    = pyqtSignal(int, int)
     track_volume_committed  = pyqtSignal()   # dp-245 D1: fires once on release
+    level_requested         = pyqtSignal()   # dp-266
     remove_requested        = pyqtSignal(int)
     color_changed           = pyqtSignal(int, str)
     reordered               = pyqtSignal(int, int)
@@ -114,6 +116,15 @@ class PlaylistWidget(QWidget):
         vol_row.addWidget(lbl_vol)
         vol_row.addWidget(self._track_vol_slider)
         vol_row.addWidget(self._lbl_track_vol)
+        # dp-266: level every track's volume to the quietest regular track.
+        self._btn_level = QPushButton("Level")
+        self._btn_level.setFont(make_font(FONT_SIZE_SMALL))
+        self._btn_level.setFixedHeight(18)
+        self._btn_level.setToolTip(
+            "Measure loudness and set each track's volume so the playlist is even"
+        )
+        self._btn_level.clicked.connect(self.level_requested.emit)
+        vol_row.addWidget(self._btn_level)
         layout.addLayout(vol_row)
 
     # ── Public API ────────────────────────────────────────────────────────────

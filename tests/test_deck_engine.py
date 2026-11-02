@@ -125,6 +125,7 @@ def _make_bare_engine(sample_rate=48000, temp_dir=None):
     engine._retire_lock = threading.Lock()  # dp-220: separate teardown lock
     engine._state = "stopped"
     engine._master_volume = 1.0
+    engine._master_volume_level = 100  # dp-265: fader position behind the gain
     engine._fade_in_ms = 0
     engine._fade_out_ms = 0
     engine.on_track_end = None

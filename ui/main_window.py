@@ -11,7 +11,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QFileDialog, QFrame, QSizePolicy, QMessageBox
+    QLabel, QFileDialog, QFrame, QSizePolicy, QMessageBox,
+    QDialog, QSpinBox, QPushButton
 )
 from PyQt6.QtCore  import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui   import QAction, QActionGroup, QKeySequence, QIcon
@@ -22,6 +23,9 @@ from core.deck_engine   import FOLLOW_SYSTEM_DEFAULT, list_output_devices
 from core.version       import __version__
 from core.playlist      import playlist, SHOW_EXTENSION, ShowFileError
 from core.analyzer      import WaveformAnalyzer
+from core.web_remote    import (
+    WebRemoteServer, DEFAULT_PORT, downsample_waveform, lan_addresses,
+)
 from core             import artnet_bridge as _ab_module
 from core.artnet_config import artnet_config
 from core.crossfade_model   import CrossfadeLayout, Overlap
@@ -31,6 +35,7 @@ from ui.waveform_widget      import WaveformWidget
 from ui.preview_waveform_widget import PreviewWaveformWidget, resolve_preview_markers
 from ui.crossfade_scrub_slider import CrossfadeScrubSlider
 from ui.playlist_widget      import PlaylistWidget
+from ui.level_playlist       import LevelPlaylistFlow
 from ui.transport_widget     import TransportWidget
 
 from ui.artnet_map_window    import ArtNetMapWindow
@@ -86,6 +91,7 @@ class MainWindow(QMainWindow):
     _files_scanned_signal    = pyqtSignal(list)
     _engine_track_changed_signal = pyqtSignal(str)
     _crossfade_progress_signal   = pyqtSignal(bool, float, int)
+    _web_command_signal          = pyqtSignal(str, object)  # dp-267
 
     def __init__(self):
         super().__init__()
@@ -174,6 +180,12 @@ class MainWindow(QMainWindow):
         self._files_scanned_signal.connect(self._on_files_scanned)
         self._engine_track_changed_signal.connect(self._on_engine_track_changed)
         self._crossfade_progress_signal.connect(self._on_crossfade_progress)
+        self._web_command_signal.connect(self._on_web_command)
+
+        # dp-267: LAN web viewer/control. The HTTP threads only ever emit the
+        # signal above; everything that touches Qt/engine runs in its slot.
+        self._web = WebRemoteServer()
+        self._web.on_command = lambda name, arg: self._web_command_signal.emit(name, arg)
 
         self._connect_engine()
         self._connect_playlist()
@@ -201,6 +213,8 @@ class MainWindow(QMainWindow):
         self._refresh_playlist_widget()
         if playlist.count > 0:
             self._playlist_widget.set_current(playlist.current_index)
+
+        self._restore_web_remote()
 
     # ── Drag and drop ─────────────────────────────────────────────────────────
 
@@ -399,6 +413,7 @@ class MainWindow(QMainWindow):
         self._add_action(shortcuts_menu, "Clear Loop",     lambda: self._on_loop_clear(),  "Ctrl+Shift+L", kb=True)
         pb_menu.addSeparator()
         self._add_action(pb_menu, "Crossfade…",     self._on_show_crossfade_dialog)
+        self._add_action(pb_menu, "Level Playlist Volumes…", self._on_level_playlist)
         pb_menu.addSeparator()
         # dp-223: rebuilt every time it opens, so a device plugged in after
         # launch shows up without restarting SAVA.
@@ -456,6 +471,18 @@ class MainWindow(QMainWindow):
         self._act_artnet.setChecked(artnet_config.listen_enabled)
         self._act_artnet.triggered.connect(self._on_toggle_artnet)
         artnet_menu.addAction(self._act_artnet)
+
+        remote_menu = mb.addMenu("Remote")
+        self._act_web_viewer = QAction("Web Viewer", self, checkable=True)
+        self._act_web_viewer.setChecked(bool(settings.get("web_viewer_enabled", False)))
+        self._act_web_viewer.triggered.connect(self._on_toggle_web)
+        remote_menu.addAction(self._act_web_viewer)
+        self._act_web_control = QAction("Web Control", self, checkable=True)
+        self._act_web_control.setChecked(bool(settings.get("web_control_enabled", False)))
+        self._act_web_control.triggered.connect(self._on_toggle_web)
+        remote_menu.addAction(self._act_web_control)
+        remote_menu.addSeparator()
+        self._add_action(remote_menu, "Web Remote Info…", self._on_web_info)
 
         help_menu = mb.addMenu("Help")
         self._add_action(help_menu, "Instructions / How to use…", self._on_help_instructions)
@@ -566,6 +593,7 @@ class MainWindow(QMainWindow):
         later decode for a different track can never be mistaken for this
         one when its result lands."""
         self._primary_target = filepath
+        self._web.publish_waveform([])  # dp-267: drop the previous track's wave
         self._lbl_buffering.setText("Buffering waveform")  # dp-217 repurpose
         decoder = WaveformAnalyzer()
         decoder.on_ready = (
@@ -580,6 +608,7 @@ class MainWindow(QMainWindow):
         pw.track_activated.connect(self._on_playlist_activated)
         pw.track_volume_changed.connect(self._on_track_volume_changed)
         pw.track_volume_committed.connect(self._on_track_volume_committed)
+        pw.level_requested.connect(self._on_level_playlist)
         pw.remove_requested.connect(self._on_remove_track)
         pw.color_changed.connect(self._on_track_color_changed)
         pw.reordered.connect(playlist.move)
@@ -1040,6 +1069,7 @@ class MainWindow(QMainWindow):
         if filepath != self._primary_target:
             return
         self._waveform_widget.set_waveform(waveform, dur)
+        self._web.publish_waveform(downsample_waveform(waveform))
         idx = next(
             (i for i, t in enumerate(playlist.tracks) if t["filepath"] == filepath),
             -1,
@@ -1047,6 +1077,7 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             playlist.update_duration(idx, dur)
             self._playlist_widget.update_duration(idx, dur)
+            self._web_publish_playlist()
         self._update_crossfade_markers()
 
     # ── Playlist callbacks ────────────────────────────────────────────────────
@@ -1059,6 +1090,7 @@ class MainWindow(QMainWindow):
         self._playlist_widget.populate(playlist.tracks)
         if playlist.current_index >= 0:
             self._playlist_widget.set_current(playlist.current_index)
+        self._web_publish_playlist()
         self._invalidate_crossfade_layout_if_stale()
         # dp-192/dp-216: a playlist edit can change which track comes next,
         # so the idle deck may be stale. Re-arm against the new prediction
@@ -1325,6 +1357,16 @@ class MainWindow(QMainWindow):
             engine.set_track_volume(volume, meta["filepath"], meta.get("id"))
             if track_index == playlist.current_index:
                 engine.set_track_volume(volume)
+
+    def _on_level_playlist(self):
+        """dp-266: measure + level every track's volume (see ui/level_playlist)."""
+        if getattr(self, "_level_flow", None) is None:
+            self._level_flow = LevelPlaylistFlow(self)
+            self._level_flow.applied.connect(self._on_levels_applied)
+        self._level_flow.start()
+
+    def _on_levels_applied(self):
+        self._playlist_widget.update_track_volume_display(engine.track_volume)
 
     def _on_track_volume_committed(self):
         """dp-245 D1: per-track volume is set continuously during a slider
@@ -2003,6 +2045,154 @@ class MainWindow(QMainWindow):
         if time.monotonic() >= self._artnet_status_hold_until:
             self._status_right.setText("ArtNet: listening" if running else "ArtNet: off")
         self._check_artnet_config_changed()
+        self._web_publish_state(pos, dur)
+
+    # ── Remote (LAN web viewer / control, dp-267) ────────────────────────────
+
+    def _web_publish_playlist(self):
+        # The server compares and only bumps its revision on a real change.
+        if not self._web.running:
+            return
+        self._web.publish_playlist(
+            {"t": tr.get("title", "Unknown"), "d": float(tr.get("duration") or 0.0)}
+            for tr in playlist.tracks
+        )
+
+    def _web_publish_state(self, pos, dur):
+        if not self._web.running:
+            return
+        meta = playlist.current or {}
+        title = meta.get("title", "")
+        artist = meta.get("artist", "")
+        if artist and artist != "Unknown" and title:
+            title = f"{artist} - {title}"
+        self._web.publish_state({
+            "state": engine.state,
+            "title": title,
+            "info": f"Track {playlist.current_index + 1} of {playlist.count}",
+            "index": playlist.current_index,
+            "pos": round(pos, 3),
+            "dur": round(dur, 3),
+            "timecode": _format_timecode(pos, dur, self._timecode_mode),
+            "volume": engine.master_volume,
+        })
+
+    def _on_web_command(self, name, arg):
+        """Runs on the Qt main thread (queued from the HTTP thread). The
+        server has already validated name/arg; this routes to the same
+        handlers the local UI and ArtNet use. Last write wins."""
+        if name == "play":
+            self._on_play()
+        elif name == "pause":
+            self._on_pause()
+        elif name == "stop":
+            self._on_stop()
+        elif name == "next":
+            self._on_next()
+        elif name == "prev":
+            self._on_prev()
+        elif name == "volume":
+            engine.set_master_volume(arg)
+            self._transport.set_master_volume(arg)
+        elif name == "seek":
+            self._on_seek_requested(arg)
+        elif name == "play_index":
+            if 0 <= arg < playlist.count:
+                self._on_playlist_activated(arg)
+
+    def _restore_web_remote(self):
+        self._web.set_viewer_enabled(self._act_web_viewer.isChecked())
+        self._web.set_control_enabled(self._act_web_control.isChecked())
+        self._sync_web_server()
+
+    def _on_toggle_web(self, _checked=False):
+        settings.set("web_viewer_enabled", self._act_web_viewer.isChecked())
+        settings.set("web_control_enabled", self._act_web_control.isChecked())
+        self._web.set_viewer_enabled(self._act_web_viewer.isChecked())
+        self._web.set_control_enabled(self._act_web_control.isChecked())
+        self._sync_web_server()
+
+    def _web_port(self):
+        try:
+            return int(settings.get("web_remote_port", DEFAULT_PORT))
+        except (TypeError, ValueError):
+            return DEFAULT_PORT
+
+    def _sync_web_server(self):
+        """Start the server when either interface is on, stop it when both
+        are off. A failed bind unchecks both actions rather than crashing."""
+        want = self._web.viewer_enabled or self._web.control_enabled
+        if want and not self._web.running:
+            try:
+                self._web.start(self._web_port())
+            except OSError as err:
+                self._act_web_viewer.setChecked(False)
+                self._act_web_control.setChecked(False)
+                self._web.set_viewer_enabled(False)
+                self._web.set_control_enabled(False)
+                settings.set("web_viewer_enabled", False)
+                settings.set("web_control_enabled", False)
+                QMessageBox.warning(
+                    self, "Web Remote",
+                    f"Could not start the web remote on port {self._web_port()}:\n"
+                    f"{err}\n\nPick another port in Remote -> Web Remote Info.",
+                )
+                return
+            self._web_publish_playlist()
+            self._web_publish_state(engine.position, engine.duration)
+        elif not want and self._web.running:
+            self._web.stop()
+
+    def _on_web_info(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Web Remote Info")
+        lay = QVBoxLayout(dlg)
+        body = QLabel()
+        body.setTextFormat(Qt.TextFormat.RichText)
+        body.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+            | Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        body.setOpenExternalLinks(True)
+        lay.addWidget(body)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Port:"))
+        spin = QSpinBox()
+        spin.setRange(1024, 65535)
+        spin.setValue(self._web_port())
+        row.addWidget(spin)
+        apply_btn = QPushButton("Apply")
+        row.addWidget(apply_btn)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        def refresh():
+            port = self._web_port()
+            lines = []
+            for addr in lan_addresses():
+                for label, path in (("Viewer", "view"), ("Control", "control")):
+                    url = f"http://{addr}:{port}/{path}"
+                    lines.append(f'{label}: <a href="{url}">{url}</a>')
+            status = (
+                f"Viewer {'on' if self._web.viewer_enabled else 'off'} / "
+                f"Control {'on' if self._web.control_enabled else 'off'}"
+            )
+            body.setText(
+                "Open these from a phone or laptop on the same network.<br>"
+                "No password: anyone on the network can use an enabled page."
+                "<br><br>" + "<br>".join(lines) + "<br><br>" + status
+            )
+
+        def apply_port():
+            settings.set("web_remote_port", spin.value())
+            if self._web.running:
+                self._web.stop()
+                self._sync_web_server()
+            refresh()
+
+        apply_btn.clicked.connect(apply_port)
+        refresh()
+        dlg.exec()
 
     # ── Window events ─────────────────────────────────────────────────────────
 
@@ -2011,6 +2201,7 @@ class MainWindow(QMainWindow):
         settings.set("window_y", self.y())
         playlist.save()
         settings.save()
+        self._web.stop()
         b = _bridge()
         if b:
             try:
@@ -2100,6 +2291,7 @@ _HELP_HTML = f"""
 <h3 style="color:{C_ACCENT};">5. Playlist</h3>
 <ul>
 <li><b>Drag</b> rows to reorder. <b>Track volume</b> slider applies to the selected row only.</li>
+<li><b>Level</b> button (or <b>Playback &rarr; Level Playlist Volumes…</b>) measures every track's loudness and turns the louder ones down so the playlist is roughly even. It overwrites per-track volumes, never boosts, and leaves much quieter tracks (spoken intros, ambience) untouched. Nothing changes until you confirm.</li>
 <li><b>Right-click a row:</b> Play this track, Remove from playlist, <b>When this track ends</b> (play next <code>&gt;</code> / loop <code>@</code> / stop <code>|</code>), Set or Clear colour label, Clear markers.</li>
 </ul>
 
@@ -2145,7 +2337,17 @@ _HELP_HTML = f"""
 <tr><td><b>Track Select</b></td><td>Track number. 0-255 maps to 0-100 (matches consoles that display percent). Value 0 does nothing.</td></tr>
 </table>
 
-<h3 style="color:{C_ACCENT};">10. Keyboard shortcuts</h3>
+<h3 style="color:{C_ACCENT};">10. Remote (web viewer / control)</h3>
+<p>Phones and laptops on the same network can watch or drive SAVA from a browser. No internet needed.</p>
+<ul>
+<li><b>Remote &rarr; Web Viewer</b> - read-only page: title, timecode, waveform with a moving playhead, and the playlist.</li>
+<li><b>Remote &rarr; Web Control</b> - the same, plus play / pause / stop / next / prev, master volume, click-to-seek on the waveform and click-a-row to play.</li>
+<li><b>Remote &rarr; Web Remote Info</b> - shows the addresses to open and lets you change the port (default 8765).</li>
+<li>There is <b>no password</b>: anyone on your network can use an enabled page. Only enable it on networks you trust.</li>
+<li>The first time it starts, Windows Firewall may ask for permission - allow it on private networks.</li>
+</ul>
+
+<h3 style="color:{C_ACCENT};">11. Keyboard shortcuts</h3>
 <table cellpadding="4">
 <tr><td><b>Space</b></td><td>Play / Pause</td></tr>
 <tr><td><b>.</b></td><td>Stop</td></tr>
@@ -2157,13 +2359,13 @@ _HELP_HTML = f"""
 </table>
 <p>Turn them all off with <b>View &rarr; Keyboard shortcuts enabled</b>.</p>
 
-<h3 style="color:{C_ACCENT};">11. View</h3>
+<h3 style="color:{C_ACCENT};">12. View</h3>
 <ul>
 <li><b>Always on top</b> - keeps SAVA above other windows. Applies on next launch.</li>
 <li><b>Theme</b> - colour scheme. Applies on next launch.</li>
 </ul>
 
-<h3 style="color:{C_ACCENT};">12. Troubleshooting</h3>
+<h3 style="color:{C_ACCENT};">13. Troubleshooting</h3>
 <ul>
 <li><b>A track will not load:</b> check <code>ffmpeg.exe</code> is in the install folder under <code>_internal\\assets\\</code>.</li>
 <li><b>No sound:</b> check <b>Playback &rarr; Audio Output</b> - the saved device may be unplugged. "Follow Windows default" is the safe choice.</li>

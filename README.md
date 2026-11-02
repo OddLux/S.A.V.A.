@@ -34,7 +34,12 @@ publisher — choose **More info → Run anyway**.
 - **Waveform display** with click/drag scrubbing, plus a preview waveform of
   the queued-next track.
 - Per-track **volume**, **color labels**, and **end actions** (next / loop /
-  stop).
+  stop). Volume faders use a perceptual dB taper.
+- **Level playlist** — measures each track's loudness (EBU R128) and evens
+  out the per-track volumes in one click.
+- **LAN web remote** — a read-only viewer page and a control page (transport,
+  volume, seek, track select) for phones and laptops on the same network.
+  Works offline; toggle each from the **Remote** menu.
 - Playlist with shuffle and repeat (none / one / all); **M3U** and **PLS**
   import/export; **`.savashow`** export/import that carries cues and markers.
 - Selectable **color themes** and audio **output-device** selection.

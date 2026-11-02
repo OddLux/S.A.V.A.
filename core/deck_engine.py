@@ -63,6 +63,7 @@ from mutagen import File as MutagenFile
 from config.settings import settings
 from core.subproc import popen_kwargs
 from core.track_identity import ROW_KEY_MAP
+from core.volume_curve import slider_to_gain
 
 
 def _row_or_file_key(track_id, filepath, file_key):
@@ -316,6 +317,10 @@ class Deck:
 
         self.gain = 1.0          # crossfade ramp multiplier (Phase 3 hook)
         self.track_volume = 1.0
+        # dp-265: the 0-100 fader position track_volume was derived from.
+        # track_volume is now a dB-taper gain, so int(track_volume * 100)
+        # no longer round-trips to what the slider shows.
+        self.track_volume_level = 100
 
         self.loop_a = None
         self.loop_b = None
@@ -836,7 +841,8 @@ class DeckEngine:
         # `self._lock`.
         self._retire_lock = threading.Lock()
         self._state = STATE_STOPPED
-        self._master_volume = settings.get("master_volume", 80) / 100.0
+        self._master_volume_level = max(0, min(settings.get("master_volume", 80), 100))
+        self._master_volume = slider_to_gain(self._master_volume_level)
         self._fade_in_ms = settings.get("fade_in_ms", 0)
         self._fade_out_ms = settings.get("fade_out_ms", 0)
 
@@ -1361,8 +1367,9 @@ class DeckEngine:
             self._active.load(filepath, duration, self._temp_dir)
             self._active.track_id = track_id
             vol_map, vol_key = _row_or_file_key(track_id, filepath, "track_volumes")
-            tv = settings.get(vol_map, {}).get(vol_key, 100)
-            self._active.track_volume = tv / 100.0
+            tv = max(0, min(settings.get(vol_map, {}).get(vol_key, 100), 100))
+            self._active.track_volume_level = tv
+            self._active.track_volume = slider_to_gain(tv)
             cue_map, cue_key = _row_or_file_key(track_id, filepath, "cue_points")
             raw_cues = settings.get(cue_map, {}).get(cue_key, [])
             self._active.cue_points = {i: v for i, v in enumerate(raw_cues)}
@@ -1610,8 +1617,9 @@ class DeckEngine:
                 return  # superseded while loading
             idle_deck.track_id = track_id
             vol_map, vol_key = _row_or_file_key(track_id, filepath, "track_volumes")
-            tv = settings.get(vol_map, {}).get(vol_key, 100)
-            idle_deck.track_volume = tv / 100.0
+            tv = max(0, min(settings.get(vol_map, {}).get(vol_key, 100), 100))
+            idle_deck.track_volume_level = tv
+            idle_deck.track_volume = slider_to_gain(tv)
             cue_map, cue_key = _row_or_file_key(track_id, filepath, "cue_points")
             raw_cues = settings.get(cue_map, {}).get(cue_key, [])
             idle_deck.cue_points = {i: v for i, v in enumerate(raw_cues)}
@@ -1783,7 +1791,8 @@ class DeckEngine:
         # MainWindow.closeEvent -> settings.save(). Do not "fix" this
         # inconsistency by adding a save call.
         with self._lock:
-            self._master_volume = max(0, min(volume, 100)) / 100.0
+            self._master_volume_level = max(0, min(volume, 100))
+            self._master_volume = slider_to_gain(self._master_volume_level)
             settings.set("master_volume", volume)
 
     def set_track_volume(self, volume: int, filepath: str = None, track_id: str = None):
@@ -1809,13 +1818,16 @@ class DeckEngine:
                 track_id = self._active.track_id
             if filepath is None:
                 return
-            gain = max(0, min(volume, 100)) / 100.0
+            level = max(0, min(volume, 100))
+            gain = slider_to_gain(level)
             for deck in (self._active, self._idle):
                 if track_id is not None:
                     if deck.track_id == track_id:
                         deck.track_volume = gain
+                        deck.track_volume_level = level
                 elif deck.filepath == filepath:
                     deck.track_volume = gain
+                    deck.track_volume_level = level
             vol_map, vol_key = _row_or_file_key(track_id, filepath, "track_volumes")
             track_vols = settings.get(vol_map, {})
             track_vols[vol_key] = volume
@@ -1990,11 +2002,11 @@ class DeckEngine:
 
     @property
     def master_volume(self):
-        return int(self._master_volume * 100)
+        return self._master_volume_level
 
     @property
     def track_volume(self):
-        return int(self._active.track_volume * 100)
+        return self._active.track_volume_level
 
     @property
     def loop_points(self):

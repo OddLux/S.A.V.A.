@@ -25,6 +25,7 @@ from PyQt6.QtCore import QPoint  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from test_deck_engine import _make_bare_engine, _make_deck  # noqa: E402
+from core.volume_curve import slider_to_gain  # noqa: E402
 from ui.playlist_widget import PlaylistWidget  # noqa: E402
 
 _app = QApplication.instance() or QApplication(sys.argv)
@@ -128,7 +129,7 @@ class TestSetTrackVolumeOnlyTouchesMatchingDecks(unittest.TestCase):
             fake_settings.get.return_value = {}
             engine.set_track_volume(50, "playing.wav")
 
-        self.assertAlmostEqual(engine._active.track_volume, 0.5)
+        self.assertAlmostEqual(engine._active.track_volume, slider_to_gain(50))  # dp-265 dB taper
         self.assertEqual(engine._idle.track_volume, 1.0)
 
     def test_preloaded_idle_deck_updates_so_it_swaps_in_at_the_right_gain(self):
@@ -137,7 +138,7 @@ class TestSetTrackVolumeOnlyTouchesMatchingDecks(unittest.TestCase):
             fake_settings.get.return_value = {}
             engine.set_track_volume(25, "queued.wav")
 
-        self.assertAlmostEqual(engine._idle.track_volume, 0.25)
+        self.assertAlmostEqual(engine._idle.track_volume, slider_to_gain(25))  # dp-265 dB taper
         self.assertEqual(engine._active.track_volume, 1.0)
 
     def test_value_is_still_persisted_for_a_non_loaded_track(self):
